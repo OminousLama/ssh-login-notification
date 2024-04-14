@@ -1,0 +1,40 @@
+
+> This is a copy of the original post for archival purposes.
+
+- Source: https://askubuntu.com/a/448602
+- Author: Fritz
+- Copy Date: 2024-04-14
+
+# Content
+
+> Warning: As always when you change the login configuration, leave a backup ssh session open in the background and test the login from a new terminal.
+
+Since the sshrc method doesn't work if the user has their own `~/.ssh/rc` file, I'll explain how to do this with pam_exec as @adosaiguas suggested. The good thing is that this can also be easily adapted to login types other than ssh (such as local logins or even all logins) by hooking into a different file in `/etc/pam.d/`.
+
+First you need to be able to send mail from the command line. There are other questions about this. On a mail server it's probably easiest to install mailx (which is probably already installed anyway). You need to configure mailx so that the user root can send mails.
+
+Then you need an executable script file login-notify.sh with the following content. You can change the variables to change the subject and content of the e-mail notification. You can put the file in `/usr/local/bin` or in `/etc/ssh/` for example. Don't forget to run `chmod +x login-notify.sh` to make it executable. And give ownership to root with `sudo chown root:root login-notify.sh`, so that nobody can mess with the script.
+
+```bash
+#!/bin/sh
+
+# Change these two lines:
+sender="sender-address@example.com"
+recepient="notify-address@example.org"
+
+if [ "$PAM_TYPE" != "close_session" ]; then
+    host="`hostname`"
+    subject="SSH Login: $PAM_USER from $PAM_RHOST on $host"
+    # Message to send, e.g. the current environment variables.
+    message="`env`"
+    echo "$message" | mailx -r "$sender" -s "$subject" "$recepient"
+fi
+``` 
+
+Once you have that, you can add the following line to `/etc/pam.d/sshd` (with the correct `/path/to/login-notify.sh` of course):
+
+`session optional pam_exec.so seteuid /path/to/login-notify.sh`
+
+For testing purposes, the module is included as optional, so that you can still log in if the execution fails. You could change optional to required. However, this will prevent any SSH login unless the script is run successfully. Not sure if this is a good idea...
+
+For those of you in need of an explanation of what PAM is and how it works, here is a very good one.
